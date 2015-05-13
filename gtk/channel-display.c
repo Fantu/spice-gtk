@@ -596,6 +596,9 @@ static void spice_display_channel_reset_capabilities(SpiceChannel *channel)
     if (SPICE_DISPLAY_CHANNEL(channel)->priv->enable_adaptive_streaming) {
         spice_channel_set_capability(SPICE_CHANNEL(channel), SPICE_DISPLAY_CAP_STREAM_REPORT);
     }
+    spice_channel_set_capability(SPICE_CHANNEL(channel), SPICE_DISPLAY_CAP_MULTI_CODEC);
+    spice_channel_set_capability(SPICE_CHANNEL(channel), SPICE_DISPLAY_CAP_CODEC_MJPEG);
+    spice_channel_set_capability(SPICE_CHANNEL(channel), SPICE_DISPLAY_CAP_CODEC_VP8);
 }
 
 static void destroy_surface(gpointer data)
@@ -1000,6 +1003,8 @@ static void display_handle_stream_create(SpiceChannel *channel, SpiceMsgIn *in)
     case SPICE_VIDEO_CODEC_TYPE_MJPEG:
         stream_mjpeg_init(st);
         break;
+    default:
+        stream_gst_init(st);
     }
 }
 
@@ -1123,6 +1128,9 @@ static gboolean display_stream_render(display_stream *st)
         switch (st->codec) {
         case SPICE_VIDEO_CODEC_TYPE_MJPEG:
             stream_mjpeg_data(st);
+            break;
+        default:
+            stream_gst_data(st);
             break;
         }
 
@@ -1471,6 +1479,9 @@ static void destroy_stream(SpiceChannel *channel, int id)
     switch (st->codec) {
     case SPICE_VIDEO_CODEC_TYPE_MJPEG:
         stream_mjpeg_cleanup(st);
+        break;
+    default:
+        stream_gst_cleanup(st);
         break;
     }
 
