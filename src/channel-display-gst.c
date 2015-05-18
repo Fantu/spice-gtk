@@ -95,27 +95,35 @@ static gboolean construct_pipeline(display_stream *st, GStreamerDecoder *decoder
     decoder->pipeline_wait = 1;
     decoder->samples_count = 0;
 
-    const gchar *src_caps, *gstdec_name;
+    const gchar *src_caps = NULL;
+    const gchar *gstdec_name = NULL;
     switch (st->codec) {
     case SPICE_VIDEO_CODEC_TYPE_MJPEG:
-        src_caps = "image/jpeg";
+        src_caps = "caps=image/jpeg";
         gstdec_name = "jpegdec";
         break;
     case SPICE_VIDEO_CODEC_TYPE_VP8:
-        src_caps = "video/x-vp8";
+        src_caps = "caps=video/x-vp8";
         gstdec_name = "vp8dec";
         break;
     case SPICE_VIDEO_CODEC_TYPE_H264:
-        src_caps = "video/x-h264";
+        src_caps = "caps=video/x-h264";
         gstdec_name = "h264parse ! avdec_h264";
         break;
     default:
-        spice_warning("Unknown codec type %d", st->codec);
-        return -1;
+        SPICE_DEBUG("Unknown codec type %d", st->codec);
+        break;
+    }
+    const gchar *gst_auto = getenv("SPICE_GST_AUTO");
+    if (!src_caps || (gst_auto && strcmp(gst_auto, "decodebin"))) {
+        src_caps = "typefind=true"; /* Misidentifies VP8 */
+    }
+    if (!gstdec_name || gst_auto) {
+        gstdec_name = "decodebin";  /* vaapi is assert-happy */
     }
 
     GError *err = NULL;
-    gchar *desc = g_strdup_printf("appsrc name=src format=2 do-timestamp=1 caps=%s ! %s ! videoconvert ! appsink name=sink caps=video/x-raw,format=BGRx", src_caps, gstdec_name);
+    gchar *desc = g_strdup_printf("appsrc name=src format=2 do-timestamp=1 %s ! %s ! videoconvert ! appsink name=sink caps=video/x-raw,format=BGRx", src_caps, gstdec_name);
     SPICE_DEBUG("GStreamer pipeline: %s", desc);
     decoder->pipeline = gst_parse_launch_full(desc, NULL, GST_PARSE_FLAG_FATAL_ERRORS, &err);
     g_free(desc);
