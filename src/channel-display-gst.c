@@ -105,6 +105,10 @@ static gboolean construct_pipeline(display_stream *st, GStreamerDecoder *decoder
         src_caps = "video/x-vp8";
         gstdec_name = "vp8dec";
         break;
+    case SPICE_VIDEO_CODEC_TYPE_H264:
+        src_caps = "video/x-h264";
+        gstdec_name = "h264parse ! avdec_h264";
+        break;
     default:
         spice_warning("Unknown codec type %d", st->codec);
         return -1;
