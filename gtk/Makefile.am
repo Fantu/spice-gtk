@@ -99,7 +99,8 @@ SPICE_COMMON_CPPFLAGS =						\
 	$(DBUS_GLIB_CFLAGS)					\
 	$(SSL_CFLAGS)						\
 	$(SASL_CFLAGS)						\
-	$(GST_CFLAGS)						\
+	$(GSTAUDIO_CFLAGS)					\
+	$(GSTVIDEO_CFLAGS)					\
 	$(SMARTCARD_CFLAGS)					\
 	$(USBREDIR_CFLAGS)					\
 	$(GUDEV_CFLAGS)						\
@@ -213,7 +214,8 @@ libspice_client_glib_2_0_la_LIBADD =					\
 	$(PIXMAN_LIBS)							\
 	$(SSL_LIBS)							\
 	$(PULSE_LIBS)							\
-	$(GST_LIBS)							\
+	$(GSTAUDIO_LIBS)						\
+	$(GSTVIDEO_LIBS)						\
 	$(SASL_LIBS)							\
 	$(SMARTCARD_LIBS)						\
 	$(USBREDIR_LIBS)						\
@@ -343,6 +345,12 @@ if WITH_GSTAUDIO
 libspice_client_glib_2_0_la_SOURCES +=	\
 	spice-gstaudio.c		\
 	spice-gstaudio.h		\
+	$(NULL)
+endif
+
+if HAVE_GSTVIDEO
+libspice_client_glib_2_0_la_SOURCES +=	\
+	channel-display-gst.c		\
 	$(NULL)
 endif
 
