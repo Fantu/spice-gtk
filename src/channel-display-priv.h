@@ -35,7 +35,7 @@
 G_BEGIN_DECLS
 
 #if defined(HAVE_GSTVIDEO)
-typedef struct GstreamerDecoder GstreamerDecoder;
+typedef struct GStreamerDecoder GStreamerDecoder;
 #endif
 
 typedef struct display_surface {
@@ -69,14 +69,14 @@ typedef struct display_stream {
     int                         have_region;
     int                         codec;
 
-    /* mjpeg decoder */
+    /* builtin mjpeg decoder */
     struct jpeg_source_mgr         mjpeg_src;
     struct jpeg_decompress_struct  mjpeg_cinfo;
     struct jpeg_error_mgr          mjpeg_jerr;
 
 #if defined(HAVE_GSTVIDEO)
-    /* gstreamer decoder */
-    struct GstreamerDecoder     *gst_dec;
+    /* GStreamer decoder */
+    struct GStreamerDecoder     *gst_dec;
 #endif
 
     uint8_t                     *out_frame;

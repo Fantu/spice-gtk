@@ -337,7 +337,7 @@ AC_SUBST(GSTAUDIO_LIBS)
 PKG_CHECK_MODULES(GSTVIDEO, gstreamer-1.0 gstreamer-base-1.0 gstreamer-app-1.0 gstreamer-video-1.0, [have_gst_video=yes], [have_gst_video=no])
 AC_SUBST(GSTVIDEO_CFLAGS)
 AC_SUBST(GSTVIDEO_LIBS)
-AS_IF([test "x$have_gst_video" = "xyes"], [AC_DEFINE([HAVE_GSTVIDEO], 1, [Have Gstreamer Video?])])
+AS_IF([test "x$have_gst_video" = "xyes"], [AC_DEFINE([HAVE_GSTVIDEO], 1, [Have GStreamer Video?])])
 AM_CONDITIONAL([HAVE_GSTVIDEO],[test "$have_gst_video" != "no"])
 
 AC_ARG_ENABLE([builtin-mjpeg],
