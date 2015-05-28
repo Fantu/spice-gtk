@@ -1000,9 +1000,11 @@ static void display_handle_stream_create(SpiceChannel *channel, SpiceMsgIn *in)
     display_update_stream_region(st);
 
     switch (st->codec) {
+#ifdef WITH_BUILTIN_MJPEG
     case SPICE_VIDEO_CODEC_TYPE_MJPEG:
         stream_mjpeg_init(st);
         break;
+#endif
     default:
         stream_gst_init(st);
     }
@@ -1126,9 +1128,11 @@ static gboolean display_stream_render(display_stream *st)
 
         st->msg_data = in;
         switch (st->codec) {
+#ifdef WITH_BUILTIN_MJPEG
         case SPICE_VIDEO_CODEC_TYPE_MJPEG:
             stream_mjpeg_data(st);
             break;
+#endif
         default:
             stream_gst_data(st);
             break;
@@ -1477,9 +1481,11 @@ static void destroy_stream(SpiceChannel *channel, int id)
     g_array_free(st->drops_seqs_stats_arr, TRUE);
 
     switch (st->codec) {
+#ifdef WITH_BUILTIN_MJPEG
     case SPICE_VIDEO_CODEC_TYPE_MJPEG:
         stream_mjpeg_cleanup(st);
         break;
+#endif
     default:
         stream_gst_cleanup(st);
         break;
