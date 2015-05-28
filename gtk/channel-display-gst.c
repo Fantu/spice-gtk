@@ -31,6 +31,9 @@ struct GStreamerDecoder {
     GstElement *pipeline;
     GstAppSrc *appsrc;
     GstAppSink *appsink;
+
+    GstSample *sample;
+    GstMapInfo mapinfo;
 };
 
 static void reset_pipeline(GStreamerDecoder *decoder)
@@ -137,59 +140,41 @@ static gboolean push_compressed_buffer(display_stream *st)
         return false;
     }
 
-    // TODO.  Unref buffer?
-
     return true;
 }
 
+static void release_last_frame(display_stream *st)
+{
+    GStreamerDecoder* decoder = st->gst_dec;
+
+    if (decoder->mapinfo.memory) {
+        gst_memory_unmap(decoder->mapinfo.memory, &decoder->mapinfo);
+        gst_memory_unref(decoder->mapinfo.memory);
+        decoder->mapinfo.memory = NULL;
+    }
+    if (decoder->sample) {
+        gst_sample_unref(decoder->sample);
+        decoder->sample = NULL;
+    }
+    st->out_frame = NULL;
+}
 
 static void pull_raw_frame(display_stream *st)
 {
-    int width;
-    int height;
+    GStreamerDecoder* decoder = st->gst_dec;
+    GstBuffer *buffer;
 
-    GstSample *sample;
-    GstBuffer *buffer = NULL;
-    GstCaps *caps;
-    GstStructure *structure;
-    GstMemory *memory;
-    gint caps_width, caps_height;
-
-    sample = gst_app_sink_pull_sample(st->gst_dec->appsink);
-    if (! sample) {
+    decoder->sample = gst_app_sink_pull_sample(decoder->appsink);
+    if (!decoder->sample) {
         SPICE_DEBUG("Unable to pull sample");
         return;
     }
 
-    buffer = gst_sample_get_buffer(sample);
-    memory = gst_buffer_get_all_memory(buffer);
-    caps = gst_sample_get_caps(sample);
-
-    structure = gst_caps_get_structure (caps, 0);
-    gst_structure_get_int(structure, "width", &caps_width);
-    gst_structure_get_int(structure, "height", &caps_height);
-
-    stream_get_dimensions(st, &width, &height);
-
-    if (width != caps_width || height != caps_height) {
-        SPICE_DEBUG("Stream size %dx%x does not match frame size %dx%d",
-            width, height, caps_width, caps_height);
-    }
-    else {
-        GstMapInfo mem_info;
-
-        // TODO seems like poor memory management
-        if (gst_memory_map(memory, &mem_info, GST_MAP_READ)) {
-            g_free(st->out_frame);
-            st->out_frame = g_malloc0(mem_info.size);
-            memcpy(st->out_frame, mem_info.data, mem_info.size);
-
-            gst_memory_unmap(memory, &mem_info);
-        }
-    }
-
-    gst_memory_unref(memory);
-    gst_sample_unref(sample);
+    buffer = gst_sample_get_buffer(decoder->sample);
+    if (gst_buffer_map(buffer, &decoder->mapinfo, GST_MAP_READ))
+        st->out_frame = decoder->mapinfo.data;
+    else
+        release_last_frame(st);
 }
 
 
@@ -202,15 +187,17 @@ void stream_gst_init(display_stream *st)
 G_GNUC_INTERNAL
 void stream_gst_data(display_stream *st)
 {
+    release_last_frame(st);
     if (push_compressed_buffer(st))
         pull_raw_frame(st);
+    else
+        st->out_frame = NULL;
 }
 
 G_GNUC_INTERNAL
 void stream_gst_cleanup(display_stream *st)
 {
-    g_free(st->out_frame);
-    st->out_frame = NULL;
+    release_last_frame(st);
     if (st->gst_dec) {
         gst_decoder_destroy(st->gst_dec);
         st->gst_dec = NULL;
