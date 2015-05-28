@@ -340,6 +340,14 @@ AC_SUBST(GSTVIDEO_LIBS)
 AS_IF([test "x$have_gst_video" = "xyes"], [AC_DEFINE([HAVE_GSTVIDEO], 1, [Have Gstreamer Video?])])
 AM_CONDITIONAL([HAVE_GSTVIDEO],[test "$have_gst_video" != "no"])
 
+AC_ARG_ENABLE([builtin-mjpeg],
+  AS_HELP_STRING([--enable-builtin-mjpeg], [Enable the builtin mjpeg video decoder @<:@default=yes@:>@]),
+  [],
+  enable_builtin_mjpeg="yes")
+AS_IF([test "x$enable_builtin_mjpeg" = "xyes"],
+      [AC_DEFINE([WITH_BUILTIN_MJPEG], 1, [Use the builtin mjpeg decoder?])])
+AM_CONDITIONAL(WITH_BUILTIN_MJPEG, [test "x$enable_builtin_mjpeg" != "xno"])
+
 
 AC_CHECK_LIB(jpeg, jpeg_destroy_decompress,
     AC_MSG_CHECKING([for jpeglib.h])
