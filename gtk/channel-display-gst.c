@@ -162,8 +162,10 @@ gboolean push_frame(display_stream *st)
     GstBuffer *buffer;
 
     size = stream_get_current_frame(st, &data);
-    if (size == 0)
+    if (size == 0) {
+        SPICE_DEBUG("got an empty frame buffer!");
         return false;
+    }
 
     // TODO.  Grr.  Seems like a wasted alloc
     d = g_malloc(size);
