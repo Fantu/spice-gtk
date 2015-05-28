@@ -219,6 +219,7 @@ static void pull_frame(display_stream *st)
 
         // TODO seems like poor memory management
         if (gst_memory_map(memory, &mem_info, GST_MAP_READ)) {
+            g_free(st->out_frame);
             st->out_frame = g_malloc0(mem_info.size);
             memcpy(st->out_frame, mem_info.data, mem_info.size);
 
