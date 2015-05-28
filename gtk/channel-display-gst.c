@@ -27,134 +27,93 @@
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
 
-struct GstreamerDecoder {
+struct GStreamerDecoder {
     GstElement *pipeline;
-    GstElement *appsource;
-    GstElement *appsink;
-    GstElement *codec;
-    GstElement *convert;
+    GstAppSrc *appsrc;
+    GstAppSink *appsink;
 };
 
-static gboolean drain_pipeline(GstreamerDecoder *dec)
+static void reset_pipeline(GStreamerDecoder *decoder)
 {
-    GstSample *sample = NULL;
-    if (gst_app_sink_is_eos(GST_APP_SINK(dec->appsink)))
-        return TRUE;
+    if (!decoder->pipeline)
+        return;
 
-    do {
-        if (sample)
-            gst_sample_unref(sample);
-        sample = gst_app_sink_pull_sample(GST_APP_SINK(dec->appsink));
-    } while(sample);
-
-    return gst_app_sink_is_eos(GST_APP_SINK(dec->appsink));
+    gst_element_set_state(decoder->pipeline, GST_STATE_NULL);
+    gst_object_unref(decoder->appsrc);
+    gst_object_unref(decoder->appsink);
+    gst_object_unref(decoder->pipeline);
+    decoder->pipeline = NULL;
 }
 
-static int construct_pipeline(display_stream *st, GstreamerDecoder *dec)
+static int construct_pipeline(display_stream *st, GStreamerDecoder *decoder)
 {
+    GError *err;
     int ret;
-    GstCaps *rgb;
-    char *dec_name;
+    const gchar *src_caps, *gstdec_name;
+    gchar *desc;
 
-    if (st->codec == SPICE_VIDEO_CODEC_TYPE_VP8)
-        dec_name = "vp8dec";
-    else if (st->codec == SPICE_VIDEO_CODEC_TYPE_MJPEG)
-        dec_name = "jpegdec";
-    else {
-        SPICE_DEBUG("Uknown codec type %d", st->codec);
+    switch (st->codec) {
+    case SPICE_VIDEO_CODEC_TYPE_MJPEG:
+        src_caps = "image/jpeg";
+        gstdec_name = "jpegdec";
+        break;
+    case SPICE_VIDEO_CODEC_TYPE_VP8:
+        src_caps = "video/x-vp8";
+        gstdec_name = "vp8dec";
+        break;
+    default:
+        spice_warning("Unknown codec type %d", st->codec);
         return -1;
     }
 
-    if (dec->pipeline) {
-        GstPad *pad = gst_element_get_static_pad(dec->codec, "sink");
-        if (! pad) {
-            SPICE_DEBUG("Unable to get codec sink pad to flush the pipe");
-            return -1;
-        }
-        gst_pad_send_event(pad, gst_event_new_eos());
-
-        gst_object_unref(pad);
-        if (! drain_pipeline(dec))
-            return -1;
-
-        gst_bin_remove_many(GST_BIN(dec->pipeline), dec->appsource, dec->codec, dec->appsink, NULL);
-        gst_object_unref(dec->pipeline);
+    err = NULL;
+    desc = g_strdup_printf("appsrc name=src caps=%s ! %s ! videoconvert ! appsink name=sink caps=video/x-raw,format=BGRx", src_caps, gstdec_name);
+    decoder->pipeline = gst_parse_launch_full(desc, NULL, GST_PARSE_FLAG_FATAL_ERRORS, &err);
+    g_free(desc);
+    if (!decoder->pipeline)
+    {
+        spice_warning("GStreamer error: %s", err->message);
+        g_clear_error(&err);
+        return FALSE;
     }
+    decoder->appsrc = GST_APP_SRC(gst_bin_get_by_name(GST_BIN(decoder->pipeline), "src"));
+    decoder->appsink = GST_APP_SINK(gst_bin_get_by_name(GST_BIN(decoder->pipeline), "sink"));
 
-    dec->appsource = gst_element_factory_make ("appsrc", NULL);
-    dec->appsink = gst_element_factory_make ("appsink", NULL);
-
-    dec->codec = gst_element_factory_make (dec_name, NULL);
-    dec->convert = gst_element_factory_make ("videoconvert", NULL);
-
-    rgb = gst_caps_from_string("video/x-raw,format=BGRx");
-    if (!rgb) {
-        SPICE_DEBUG("Gstreamer error: could not make BGRx caps.");
-        return -1;
-    }
-
-    if (st->codec == SPICE_VIDEO_CODEC_TYPE_VP8) {
-        GstCaps *vp8;
-        vp8 = gst_caps_from_string("video/x-vp8");
-        if (!vp8) {
-            SPICE_DEBUG("Gstreamer error: could not make vp8 caps.");
-            return -1;
-        }
-
-        gst_app_src_set_caps(GST_APP_SRC(dec->appsource), vp8);
-        gst_app_sink_set_caps(GST_APP_SINK(dec->appsink), rgb);
-    }
-
-    dec->pipeline = gst_pipeline_new ("pipeline");
-
-    if (!dec->pipeline || !dec->appsource || !dec->appsink || !dec->codec || !dec->convert) {
-        SPICE_DEBUG("Gstreamer error: not all elements could be created.");
-        return -1;
-    }
-
-    gst_bin_add_many (GST_BIN(dec->pipeline), dec->appsource, dec->codec, dec->convert, dec->appsink, NULL);
-    if (gst_element_link_many(dec->appsource, dec->codec, dec->convert, dec->appsink, NULL) != TRUE) {
-        SPICE_DEBUG("Gstreamer error: could not link all the pieces.");
-        gst_object_unref (dec->pipeline);
-        return -1;
-    }
-
-    ret = gst_element_set_state (dec->pipeline, GST_STATE_PLAYING);
+    ret = gst_element_set_state(decoder->pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
-        SPICE_DEBUG("Gstreamer error: Unable to set the pipeline to the playing state.");
-        gst_object_unref (dec->pipeline);
+        SPICE_DEBUG("GStreamer error: Unable to set the pipeline to the playing state.");
+        reset_pipeline(decoder);
         return -1;
     }
 
     return 0;
 }
 
-static GstreamerDecoder *gst_decoder_new(display_stream *st)
+static GStreamerDecoder *gst_decoder_new(display_stream *st)
 {
-    GstreamerDecoder *dec;
+    GStreamerDecoder *decoder;
 
     gst_init(NULL, NULL);
 
-    dec = g_malloc0(sizeof(*dec));
-    if (construct_pipeline(st, dec)) {
-        free(dec);
+    decoder = g_malloc0(sizeof(*decoder));
+    if (construct_pipeline(st, decoder)) {
+        free(decoder);
         return NULL;
     }
 
-    return dec;
+    return decoder;
 }
 
 
-void gst_decoder_destroy(GstreamerDecoder *dec)
+static void gst_decoder_destroy(GStreamerDecoder *decoder)
 {
-    gst_object_unref(dec->pipeline);
-    // TODO - contemplate calling gst_deinit();
-    dec->pipeline = NULL;
-    free(dec);
+    reset_pipeline(decoder);
+    g_free(decoder);
+    /* Don't call gst_deinit() as other parts may still be using GStreamer */
 }
 
 
-gboolean push_frame(display_stream *st)
+static gboolean push_compressed_buffer(display_stream *st)
 {
     uint8_t *data;
     uint32_t size;
@@ -173,7 +132,7 @@ gboolean push_frame(display_stream *st)
 
     buffer = gst_buffer_new_wrapped(d, size);
 
-    if (gst_app_src_push_buffer(GST_APP_SRC(st->gst_dec->appsource), buffer) != GST_FLOW_OK) {
+    if (gst_app_src_push_buffer(st->gst_dec->appsrc, buffer) != GST_FLOW_OK) {
         SPICE_DEBUG("Error: unable to push frame of size %d", size);
         return false;
     }
@@ -184,7 +143,7 @@ gboolean push_frame(display_stream *st)
 }
 
 
-static void pull_frame(display_stream *st)
+static void pull_raw_frame(display_stream *st)
 {
     int width;
     int height;
@@ -196,7 +155,7 @@ static void pull_frame(display_stream *st)
     GstMemory *memory;
     gint caps_width, caps_height;
 
-    sample = gst_app_sink_pull_sample(GST_APP_SINK(st->gst_dec->appsink));
+    sample = gst_app_sink_pull_sample(st->gst_dec->appsink);
     if (! sample) {
         SPICE_DEBUG("Unable to pull sample");
         return;
@@ -243,10 +202,8 @@ void stream_gst_init(display_stream *st)
 G_GNUC_INTERNAL
 void stream_gst_data(display_stream *st)
 {
-    if (! push_frame(st))
-        return;
-
-    pull_frame(st);
+    if (push_compressed_buffer(st))
+        pull_raw_frame(st);
 }
 
 G_GNUC_INTERNAL
