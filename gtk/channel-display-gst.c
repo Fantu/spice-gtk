@@ -107,7 +107,6 @@ static GStreamerDecoder *gst_decoder_new(display_stream *st)
     return decoder;
 }
 
-
 static void gst_decoder_destroy(GStreamerDecoder *decoder)
 {
     reset_pipeline(decoder);
@@ -115,12 +114,15 @@ static void gst_decoder_destroy(GStreamerDecoder *decoder)
     /* Don't call gst_deinit() as other parts may still be using GStreamer */
 }
 
+static void release_msg_in(gpointer data)
+{
+    spice_msg_in_unref((SpiceMsgIn*)data);
+}
 
 static gboolean push_compressed_buffer(display_stream *st)
 {
     uint8_t *data;
     uint32_t size;
-    gpointer d;
     GstBuffer *buffer;
 
     size = stream_get_current_frame(st, &data);
@@ -129,11 +131,11 @@ static gboolean push_compressed_buffer(display_stream *st)
         return false;
     }
 
-    // TODO.  Grr.  Seems like a wasted alloc
-    d = g_malloc(size);
-    memcpy(d, data, size);
-
-    buffer = gst_buffer_new_wrapped(d, size);
+    /* Reference msg_data so it stays around until our deallocator releases it */
+    spice_msg_in_ref(st->msg_data);
+    buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
+                                         data, size, 0, size,
+                                         st->msg_data, &release_msg_in);
 
     if (gst_app_src_push_buffer(st->gst_dec->appsrc, buffer) != GST_FLOW_OK) {
         SPICE_DEBUG("Error: unable to push frame of size %d", size);
